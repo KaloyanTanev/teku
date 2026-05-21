@@ -142,6 +142,7 @@ public class DvtAttestationAggregations {
                       new RuntimeException(
                           "No matching complete proof from DVT middleware for this request")));
         });
+    pendingRequests.clear();
   }
 
   private static Predicate<BeaconCommitteeSelectionProof> matchingRequest(
@@ -165,7 +166,7 @@ public class DvtAttestationAggregations {
       LOG.warn(errorMsg);
       LOG.debug(errorMsg, ex);
 
-      completeAllPendingFuturesExceptionally(new RuntimeException(errorMsg));
+      completeAllPendingFuturesExceptionally(new RuntimeException(errorMsg, ex));
       return null;
     };
   }
@@ -179,5 +180,6 @@ public class DvtAttestationAggregations {
                 future.completeExceptionally(cause);
               }
             });
+    pendingRequests.clear();
   }
 }
