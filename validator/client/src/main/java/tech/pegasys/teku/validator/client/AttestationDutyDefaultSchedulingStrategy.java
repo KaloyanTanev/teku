@@ -81,7 +81,7 @@ public class AttestationDutyDefaultSchedulingStrategy
         getScheduledDuties(duties);
 
     final Optional<DvtAttestationAggregations> dvtAttestationAggregations;
-    if (useDvtEndpoint) {
+    if (useDvtEndpoint && !duties.getDuties().isEmpty()) {
       final DvtAttestationAggregations dvt =
           new DvtAttestationAggregations(validatorApiChannel, epoch, duties.getDuties().size());
       final boolean isCurrentEpoch =

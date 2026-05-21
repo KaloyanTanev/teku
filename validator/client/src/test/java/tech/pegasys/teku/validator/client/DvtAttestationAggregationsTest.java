@@ -267,6 +267,19 @@ class DvtAttestationAggregationsTest {
     assertThat(future2).isCompleted();
   }
 
+  @Test
+  public void futureRegisteredAfterCancelCompletesExceptionally() {
+    loader = new DvtAttestationAggregations(validatorApiChannel, UInt64.ONE, 1);
+
+    loader.cancel();
+
+    final SafeFuture<BLSSignature> future =
+        loader.getCombinedSelectionProofFuture(1, UInt64.ONE, dataStructureUtil.randomSignature());
+
+    assertThat(future).isCompletedExceptionally();
+    verifyNoInteractions(validatorApiChannel);
+  }
+
   private BeaconCommitteeSelectionProof combinedProof(final int validatorIndex) {
     return new BeaconCommitteeSelectionProof.Builder()
         .validatorIndex(validatorIndex)

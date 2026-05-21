@@ -67,7 +67,11 @@ public class DvtAttestationAggregations {
     final SafeFuture<BLSSignature> future = new SafeFuture<>();
     pendingRequests.put(request, future);
 
-    if (activationSlot != null && pendingRequests.size() >= expectedDutiesCount) {
+    if (submitted.get()) {
+      future.completeExceptionally(
+          new RuntimeException(
+              "DVT attestation aggregation already submitted or cancelled for epoch " + epoch));
+    } else if (activationSlot != null && pendingRequests.size() >= expectedDutiesCount) {
       maybeSubmit();
     }
 

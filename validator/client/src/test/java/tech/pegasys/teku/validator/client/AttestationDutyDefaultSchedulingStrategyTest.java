@@ -280,4 +280,26 @@ class AttestationDutyDefaultSchedulingStrategyTest {
     dvtStrategy.onSlot(firstSlotOfLookaheadEpoch);
     verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
   }
+
+  @Test
+  @SuppressWarnings("FutureReturnValueIgnored")
+  void dvtNotSubmittedWhenDutiesListIsEmpty() {
+    final AttestationDutyDefaultSchedulingStrategy dvtStrategy =
+        new AttestationDutyDefaultSchedulingStrategy(
+            spec,
+            forkProvider,
+            dependentRoot -> scheduledDuties,
+            new OwnedValidators(validators),
+            beaconCommitteeSubscriptions,
+            validatorApiChannel,
+            true);
+
+    final AttesterDuties emptyDuties =
+        new AttesterDuties(false, dataStructureUtil.randomBytes32(), emptyList());
+
+    dvtStrategy.scheduleAllDuties(UInt64.ONE, emptyDuties);
+    dvtStrategy.onSlot(spec.computeStartSlotAtEpoch(UInt64.ONE));
+
+    verifyNoInteractions(validatorApiChannel);
+  }
 }
