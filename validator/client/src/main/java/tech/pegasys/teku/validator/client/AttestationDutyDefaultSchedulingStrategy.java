@@ -90,6 +90,10 @@ public class AttestationDutyDefaultSchedulingStrategy
       }
       dvtAttestationAggregations = Optional.of(dvt);
     } else {
+      final DvtAttestationAggregations previous = pendingDvtByEpoch.remove(epoch);
+      if (previous != null) {
+        previous.cancel();
+      }
       dvtAttestationAggregations = Optional.empty();
     }
 

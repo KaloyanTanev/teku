@@ -13,6 +13,7 @@
 
 package tech.pegasys.teku.validator.client;
 
+import com.google.common.base.Throwables;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
@@ -180,7 +181,7 @@ abstract class AbstractAttestationDutySchedulingStrategy
             })
         .exceptionally(
             error -> {
-              if (error instanceof CancellationException) {
+              if (Throwables.getRootCause(error) instanceof CancellationException) {
                 LOG.debug("DVT attestation aggregation cancelled for slot {}", slot);
               } else {
                 LOG.error("Failed to schedule aggregation duties", error);
