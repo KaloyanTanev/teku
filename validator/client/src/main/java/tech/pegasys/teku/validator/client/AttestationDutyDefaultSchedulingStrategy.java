@@ -62,16 +62,13 @@ public class AttestationDutyDefaultSchedulingStrategy
   public void onSlot(final UInt64 slot) {
     currentSlot.set(slot);
     final UInt64 currentEpoch = spec.computeEpochAtSlot(slot);
-    pendingDvtByEpoch
-        .entrySet()
-        .removeIf(
-            entry -> {
-              if (entry.getKey().isLessThanOrEqualTo(currentEpoch)) {
-                entry.getValue().activate();
-                return true;
-              }
-              return false;
-            });
+    pendingDvtByEpoch.forEach(
+        (epoch, dvt) -> {
+          if (epoch.isLessThanOrEqualTo(currentEpoch)) {
+            dvt.activate();
+          }
+        });
+    pendingDvtByEpoch.entrySet().removeIf(entry -> entry.getKey().isLessThan(currentEpoch));
   }
 
   @Override
