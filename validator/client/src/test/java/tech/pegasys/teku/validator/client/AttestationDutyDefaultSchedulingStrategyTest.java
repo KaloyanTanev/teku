@@ -18,11 +18,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tech.pegasys.teku.bls.BLSPublicKey;
@@ -158,5 +160,50 @@ class AttestationDutyDefaultSchedulingStrategyTest {
 
     assertThat(result).isCompleted();
     verify(beaconCommitteeSubscriptions).sendRequests();
+  }
+
+  @Test
+  @SuppressWarnings("FutureReturnValueIgnored")
+  void dvtSubmissionDeferredUntilEpochStartForLookaheadEpoch() {
+    final AttestationDutyDefaultSchedulingStrategy dvtStrategy =
+        new AttestationDutyDefaultSchedulingStrategy(
+            spec,
+            forkProvider,
+            dependentRoot -> scheduledDuties,
+            new OwnedValidators(validators),
+            beaconCommitteeSubscriptions,
+            validatorApiChannel,
+            true);
+
+    // Epoch 0 is current (currentSlot starts at 0); schedule for epoch 1 (lookahead)
+    final UInt64 lookaheadEpoch = UInt64.valueOf(1);
+    final UInt64 firstSlotOfLookaheadEpoch = spec.computeStartSlotAtEpoch(lookaheadEpoch);
+
+    final AttesterDuty duty =
+        new AttesterDuty(
+            validatorKey,
+            VALIDATOR_INDICES.getInt(0),
+            1, // committeeLength=1 ensures aggregator
+            3,
+            4,
+            0,
+            firstSlotOfLookaheadEpoch);
+    final AttesterDuties duties =
+        new AttesterDuties(false, dataStructureUtil.randomBytes32(), List.of(duty));
+
+    when(scheduledDuties.scheduleProduction(any(), any(), any())).thenReturn(new SafeFuture<>());
+    when(signer.signAggregationSlot(firstSlotOfLookaheadEpoch, forkInfo))
+        .thenReturn(SafeFuture.completedFuture(dataStructureUtil.randomSignature()));
+    when(validatorApiChannel.getBeaconCommitteeSelectionProof(any()))
+        .thenReturn(SafeFuture.completedFuture(Optional.empty()));
+
+    dvtStrategy.scheduleAllDuties(lookaheadEpoch, duties);
+
+    // Count reached but activation not yet triggered — no HTTP call
+    verifyNoInteractions(validatorApiChannel);
+
+    // First slot of lookahead epoch fires — activation triggers the HTTP call
+    dvtStrategy.onSlot(firstSlotOfLookaheadEpoch);
+    verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
   }
 }

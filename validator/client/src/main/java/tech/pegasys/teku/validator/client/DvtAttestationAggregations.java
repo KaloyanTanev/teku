@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.apache.logging.log4j.LogManager;
@@ -35,6 +36,8 @@ public class DvtAttestationAggregations {
   private final Map<BeaconCommitteeSelectionProof, SafeFuture<BLSSignature>> pendingRequests =
       new ConcurrentHashMap<>();
   private final int expectedDutiesCount;
+  private final AtomicBoolean submitted = new AtomicBoolean(false);
+  private volatile UInt64 activationSlot = null;
 
   public DvtAttestationAggregations(
       final ValidatorApiChannel validatorApiChannel, final int expectedDutiesCount) {
@@ -60,11 +63,24 @@ public class DvtAttestationAggregations {
     final SafeFuture<BLSSignature> future = new SafeFuture<>();
     pendingRequests.put(request, future);
 
-    if (pendingRequests.size() >= expectedDutiesCount) {
-      submitBatchRequests(slot);
+    if (activationSlot != null && pendingRequests.size() >= expectedDutiesCount) {
+      maybeSubmit(activationSlot);
     }
 
     return future;
+  }
+
+  public void activate(final UInt64 slot) {
+    this.activationSlot = slot;
+    if (pendingRequests.size() >= expectedDutiesCount) {
+      maybeSubmit(slot);
+    }
+  }
+
+  private void maybeSubmit(final UInt64 slot) {
+    if (submitted.compareAndSet(false, true)) {
+      submitBatchRequests(slot);
+    }
   }
 
   private void submitBatchRequests(final UInt64 slot) {
