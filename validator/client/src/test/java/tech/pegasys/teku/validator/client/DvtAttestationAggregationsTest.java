@@ -63,7 +63,7 @@ class DvtAttestationAggregationsTest {
     final SafeFuture<BLSSignature> futureSelectionProofValidator2 =
         loader.getCombinedSelectionProofFuture(2, UInt64.ONE, dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidator1)
         .isCompletedWithValue(combinedProofForValidator1.getSelectionProofSignature());
@@ -84,7 +84,7 @@ class DvtAttestationAggregationsTest {
     final SafeFuture<BLSSignature> futureSelectionProofValidator2 =
         loader.getCombinedSelectionProofFuture(2, UInt64.ONE, dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidator1)
         .isCompletedWithValue(combinedProofForValidator1.getSelectionProofSignature());
@@ -107,7 +107,7 @@ class DvtAttestationAggregationsTest {
         loader.getCombinedSelectionProofFuture(
             3, UInt64.valueOf(3), dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidator1).isCompletedExceptionally();
     assertThat(futureSelectionProofValidator2).isCompletedExceptionally();
@@ -137,7 +137,7 @@ class DvtAttestationAggregationsTest {
     final SafeFuture<BLSSignature> futureSelectionProofValidator3 =
         loader.getCombinedSelectionProofFuture(3, UInt64.ONE, dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidator1)
         .isCompletedWithValue(combinedProofForValidator1.getSelectionProofSignature());
@@ -164,7 +164,7 @@ class DvtAttestationAggregationsTest {
         loader.getCombinedSelectionProofFuture(
             1, UInt64.valueOf(2), dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidatorAtSlot1)
         .isCompletedWithValue(combinedProofForSlot1.getSelectionProofSignature());
@@ -187,7 +187,7 @@ class DvtAttestationAggregationsTest {
     final SafeFuture<BLSSignature> futureSelectionProofValidator1 =
         loader.getCombinedSelectionProofFuture(1, UInt64.ONE, dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureSelectionProofValidator1)
         .isCompletedExceptionally()
@@ -213,7 +213,7 @@ class DvtAttestationAggregationsTest {
         loader.getCombinedSelectionProofFuture(
             2, UInt64.valueOf(2), dataStructureUtil.randomSignature());
 
-    loader.activate(UInt64.ONE);
+    loader.activate();
 
     assertThat(futureProofValidator1).isCompletedExceptionally();
     assertThat(futureProofValidator2).isCompletedExceptionally();
@@ -237,7 +237,7 @@ class DvtAttestationAggregationsTest {
     assertThat(future2).isNotDone();
 
     // Activate — HTTP call fires — futures complete
-    loader.activate(UInt64.ONE);
+    loader.activate();
     verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
     assertThat(future2).isCompleted();
   }
@@ -256,7 +256,7 @@ class DvtAttestationAggregationsTest {
 
     // Activate before the second future is registered (simulates onSlot firing before signing
     // completes)
-    loader.activate(UInt64.ONE);
+    loader.activate();
     verifyNoInteractions(validatorApiChannel);
 
     // Second future registered — count now reached, activation already set — should submit

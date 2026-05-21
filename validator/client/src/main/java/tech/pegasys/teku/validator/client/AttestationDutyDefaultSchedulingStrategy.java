@@ -67,7 +67,7 @@ public class AttestationDutyDefaultSchedulingStrategy
         .removeIf(
             entry -> {
               if (entry.getKey().isLessThanOrEqualTo(currentEpoch)) {
-                entry.getValue().activate(spec.computeStartSlotAtEpoch(entry.getKey()));
+                entry.getValue().activate();
                 return true;
               }
               return false;
@@ -84,15 +84,12 @@ public class AttestationDutyDefaultSchedulingStrategy
     if (useDvtEndpoint && !duties.getDuties().isEmpty()) {
       final DvtAttestationAggregations dvt =
           new DvtAttestationAggregations(validatorApiChannel, epoch, duties.getDuties().size());
-      final boolean isCurrentEpoch =
-          epoch.isLessThanOrEqualTo(spec.computeEpochAtSlot(currentSlot.get()));
-      if (isCurrentEpoch) {
-        dvt.activate(spec.computeStartSlotAtEpoch(epoch));
-      } else {
-        final DvtAttestationAggregations previous = pendingDvtByEpoch.put(epoch, dvt);
-        if (previous != null) {
-          previous.cancel();
-        }
+      final DvtAttestationAggregations previous = pendingDvtByEpoch.put(epoch, dvt);
+      if (previous != null) {
+        previous.cancel();
+      }
+      if (epoch.isLessThanOrEqualTo(spec.computeEpochAtSlot(currentSlot.get()))) {
+        dvt.activate();
       }
       dvtAttestationAggregations = Optional.of(dvt);
     } else {

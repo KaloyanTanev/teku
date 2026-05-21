@@ -38,7 +38,7 @@ public class DvtAttestationAggregations {
       new ConcurrentHashMap<>();
   private final int expectedDutiesCount;
   private final AtomicBoolean submitted = new AtomicBoolean(false);
-  private volatile UInt64 activationSlot = null;
+  private volatile boolean activated = false;
 
   public DvtAttestationAggregations(
       final ValidatorApiChannel validatorApiChannel,
@@ -64,22 +64,30 @@ public class DvtAttestationAggregations {
             .selectionProof(partialProof.toBytesCompressed().toHexString())
             .build();
 
+    if (submitted.get()) {
+      return SafeFuture.failedFuture(
+          new RuntimeException(
+              "DVT attestation aggregation already submitted or cancelled for epoch " + epoch));
+    }
+
     final SafeFuture<BLSSignature> future = new SafeFuture<>();
     pendingRequests.put(request, future);
 
     if (submitted.get()) {
+      // Race: submitted between our initial check and the map put — remove and fail fast
+      pendingRequests.remove(request, future);
       future.completeExceptionally(
           new RuntimeException(
               "DVT attestation aggregation already submitted or cancelled for epoch " + epoch));
-    } else if (activationSlot != null && pendingRequests.size() >= expectedDutiesCount) {
+    } else if (activated && pendingRequests.size() >= expectedDutiesCount) {
       maybeSubmit();
     }
 
     return future;
   }
 
-  public void activate(final UInt64 slot) {
-    this.activationSlot = slot;
+  public void activate() {
+    this.activated = true;
     if (pendingRequests.size() >= expectedDutiesCount) {
       maybeSubmit();
     }
