@@ -17,6 +17,7 @@ import static java.util.Collections.emptyList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -278,7 +279,7 @@ class AttestationDutyDefaultSchedulingStrategyTest {
 
     // Only one HTTP call should be made when the epoch starts (from the replacement instance)
     dvtStrategy.onSlot(firstSlotOfLookaheadEpoch);
-    verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
+    verify(validatorApiChannel, times(1)).getBeaconCommitteeSelectionProof(any());
   }
 
   @Test
