@@ -16,6 +16,7 @@ package tech.pegasys.teku.validator.client;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -88,7 +89,7 @@ public class DvtAttestationAggregations {
 
   public void activate() {
     this.activated = true;
-    if (pendingRequests.size() >= expectedDutiesCount) {
+    if (!pendingRequests.isEmpty()) {
       maybeSubmit();
     }
   }
@@ -96,7 +97,8 @@ public class DvtAttestationAggregations {
   public void cancel() {
     if (submitted.compareAndSet(false, true)) {
       completeAllPendingFuturesExceptionally(
-          "DVT attestation aggregation duties rescheduled for epoch " + epoch);
+          new CancellationException(
+              "DVT attestation aggregation duties rescheduled for epoch " + epoch));
     }
   }
 
@@ -153,7 +155,8 @@ public class DvtAttestationAggregations {
     LOG.warn(
         "Received empty response from DVT middleware for epoch {}. This will impact aggregation duties.",
         epoch);
-    completeAllPendingFuturesExceptionally("Empty response from DVT middleware for epoch " + epoch);
+    completeAllPendingFuturesExceptionally(
+        new RuntimeException("Empty response from DVT middleware for epoch " + epoch));
   }
 
   private Function<Throwable, Void> unexpectedErrorHandler() {
@@ -162,18 +165,18 @@ public class DvtAttestationAggregations {
       LOG.warn(errorMsg);
       LOG.debug(errorMsg, ex);
 
-      completeAllPendingFuturesExceptionally(errorMsg);
+      completeAllPendingFuturesExceptionally(new RuntimeException(errorMsg));
       return null;
     };
   }
 
-  private void completeAllPendingFuturesExceptionally(final String errorMsg) {
+  private void completeAllPendingFuturesExceptionally(final Throwable cause) {
     pendingRequests
         .values()
         .forEach(
             future -> {
               if (!future.isDone()) {
-                future.completeExceptionally(new RuntimeException(errorMsg));
+                future.completeExceptionally(cause);
               }
             });
   }

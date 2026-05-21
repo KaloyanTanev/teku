@@ -244,27 +244,23 @@ class DvtAttestationAggregationsTest {
 
   @Test
   @SuppressWarnings("FutureReturnValueIgnored")
-  public void activateBeforeAllFuturesRegisteredStillSubmitsWhenCountReached() {
+  public void activateWithPartialBatchFiresImmediately() {
     final BeaconCommitteeSelectionProof proof1 = combinedProof(1);
-    final BeaconCommitteeSelectionProof proof2 = combinedProof(2);
     when(validatorApiChannel.getBeaconCommitteeSelectionProof(any()))
-        .thenReturn(SafeFuture.completedFuture(Optional.of(List.of(proof1, proof2))));
+        .thenReturn(SafeFuture.completedFuture(Optional.of(List.of(proof1))));
 
     loader = new DvtAttestationAggregations(validatorApiChannel, UInt64.ONE, 2);
 
     loader.getCombinedSelectionProofFuture(1, UInt64.ONE, dataStructureUtil.randomSignature());
 
-    // Activate before the second future is registered (simulates onSlot firing before signing
-    // completes)
+    // Activate at epoch start with only 1 of 2 expected futures — fires as deadline
     loader.activate();
-    verifyNoInteractions(validatorApiChannel);
-
-    // Second future registered — count now reached, activation already set — should submit
-    final SafeFuture<BLSSignature> future2 =
-        loader.getCombinedSelectionProofFuture(2, UInt64.ONE, dataStructureUtil.randomSignature());
-
     verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
-    assertThat(future2).isCompleted();
+
+    // Late registration after submission fails fast
+    final SafeFuture<BLSSignature> lateFuture =
+        loader.getCombinedSelectionProofFuture(2, UInt64.ONE, dataStructureUtil.randomSignature());
+    assertThat(lateFuture).isCompletedExceptionally();
   }
 
   @Test
