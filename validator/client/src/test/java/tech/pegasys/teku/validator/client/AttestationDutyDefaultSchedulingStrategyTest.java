@@ -206,4 +206,78 @@ class AttestationDutyDefaultSchedulingStrategyTest {
     dvtStrategy.onSlot(firstSlotOfLookaheadEpoch);
     verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
   }
+
+  @Test
+  @SuppressWarnings("FutureReturnValueIgnored")
+  void dvtSubmissionActivatedOnLaterSlotWhenEpochBoundaryMissed() {
+    final AttestationDutyDefaultSchedulingStrategy dvtStrategy =
+        new AttestationDutyDefaultSchedulingStrategy(
+            spec,
+            forkProvider,
+            dependentRoot -> scheduledDuties,
+            new OwnedValidators(validators),
+            beaconCommitteeSubscriptions,
+            validatorApiChannel,
+            true);
+
+    final UInt64 lookaheadEpoch = UInt64.valueOf(1);
+    final UInt64 firstSlotOfLookaheadEpoch = spec.computeStartSlotAtEpoch(lookaheadEpoch);
+    final UInt64 secondSlotOfLookaheadEpoch = firstSlotOfLookaheadEpoch.plus(1);
+
+    final AttesterDuty duty =
+        new AttesterDuty(
+            validatorKey, VALIDATOR_INDICES.getInt(0), 1, 3, 4, 0, firstSlotOfLookaheadEpoch);
+    final AttesterDuties duties =
+        new AttesterDuties(false, dataStructureUtil.randomBytes32(), List.of(duty));
+
+    when(scheduledDuties.scheduleProduction(any(), any(), any())).thenReturn(new SafeFuture<>());
+    when(signer.signAggregationSlot(firstSlotOfLookaheadEpoch, forkInfo))
+        .thenReturn(SafeFuture.completedFuture(dataStructureUtil.randomSignature()));
+    when(validatorApiChannel.getBeaconCommitteeSelectionProof(any()))
+        .thenReturn(SafeFuture.completedFuture(Optional.empty()));
+
+    dvtStrategy.scheduleAllDuties(lookaheadEpoch, duties);
+    verifyNoInteractions(validatorApiChannel);
+
+    // Epoch boundary slot missed — second slot of epoch still activates the pending DVT
+    dvtStrategy.onSlot(secondSlotOfLookaheadEpoch);
+    verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
+  }
+
+  @Test
+  @SuppressWarnings("FutureReturnValueIgnored")
+  void dvtRescheduledDutiesCancelPreviousPendingInstance() {
+    final AttestationDutyDefaultSchedulingStrategy dvtStrategy =
+        new AttestationDutyDefaultSchedulingStrategy(
+            spec,
+            forkProvider,
+            dependentRoot -> scheduledDuties,
+            new OwnedValidators(validators),
+            beaconCommitteeSubscriptions,
+            validatorApiChannel,
+            true);
+
+    final UInt64 lookaheadEpoch = UInt64.valueOf(1);
+    final UInt64 firstSlotOfLookaheadEpoch = spec.computeStartSlotAtEpoch(lookaheadEpoch);
+
+    final AttesterDuty duty =
+        new AttesterDuty(
+            validatorKey, VALIDATOR_INDICES.getInt(0), 1, 3, 4, 0, firstSlotOfLookaheadEpoch);
+    final AttesterDuties duties =
+        new AttesterDuties(false, dataStructureUtil.randomBytes32(), List.of(duty));
+
+    when(scheduledDuties.scheduleProduction(any(), any(), any())).thenReturn(new SafeFuture<>());
+    when(signer.signAggregationSlot(firstSlotOfLookaheadEpoch, forkInfo))
+        .thenReturn(SafeFuture.completedFuture(dataStructureUtil.randomSignature()));
+    when(validatorApiChannel.getBeaconCommitteeSelectionProof(any()))
+        .thenReturn(SafeFuture.completedFuture(Optional.empty()));
+
+    // Schedule duties for lookahead epoch, then reschedule (simulating a re-org)
+    dvtStrategy.scheduleAllDuties(lookaheadEpoch, duties);
+    dvtStrategy.scheduleAllDuties(lookaheadEpoch, duties);
+
+    // Only one HTTP call should be made when the epoch starts (from the replacement instance)
+    dvtStrategy.onSlot(firstSlotOfLookaheadEpoch);
+    verify(validatorApiChannel).getBeaconCommitteeSelectionProof(any());
+  }
 }

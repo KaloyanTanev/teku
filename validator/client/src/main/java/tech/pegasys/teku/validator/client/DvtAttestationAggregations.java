@@ -33,6 +33,7 @@ public class DvtAttestationAggregations {
   private static final Logger LOG = LogManager.getLogger();
 
   private final ValidatorApiChannel validatorApiChannel;
+  private final UInt64 epoch;
   private final Map<BeaconCommitteeSelectionProof, SafeFuture<BLSSignature>> pendingRequests =
       new ConcurrentHashMap<>();
   private final int expectedDutiesCount;
@@ -40,8 +41,11 @@ public class DvtAttestationAggregations {
   private volatile UInt64 activationSlot = null;
 
   public DvtAttestationAggregations(
-      final ValidatorApiChannel validatorApiChannel, final int expectedDutiesCount) {
+      final ValidatorApiChannel validatorApiChannel,
+      final UInt64 epoch,
+      final int expectedDutiesCount) {
     this.validatorApiChannel = validatorApiChannel;
+    this.epoch = epoch;
     this.expectedDutiesCount = expectedDutiesCount;
   }
 
@@ -64,7 +68,7 @@ public class DvtAttestationAggregations {
     pendingRequests.put(request, future);
 
     if (activationSlot != null && pendingRequests.size() >= expectedDutiesCount) {
-      maybeSubmit(activationSlot);
+      maybeSubmit();
     }
 
     return future;
@@ -73,24 +77,30 @@ public class DvtAttestationAggregations {
   public void activate(final UInt64 slot) {
     this.activationSlot = slot;
     if (pendingRequests.size() >= expectedDutiesCount) {
-      maybeSubmit(slot);
+      maybeSubmit();
     }
   }
 
-  private void maybeSubmit(final UInt64 slot) {
+  public void cancel() {
     if (submitted.compareAndSet(false, true)) {
-      submitBatchRequests(slot);
+      completeAllPendingFuturesExceptionally(
+          "DVT attestation aggregation duties rescheduled for epoch " + epoch);
     }
   }
 
-  private void submitBatchRequests(final UInt64 slot) {
+  private void maybeSubmit() {
+    if (submitted.compareAndSet(false, true)) {
+      submitBatchRequests();
+    }
+  }
+
+  private void submitBatchRequests() {
     validatorApiChannel
         .getBeaconCommitteeSelectionProof(pendingRequests.keySet().stream().toList())
         .thenAccept(
             response ->
                 response.ifPresentOrElse(
-                    this::handleBeaconCommitteeSelectionProofsResponse,
-                    () -> handleEmptyResponse(slot)))
+                    this::handleBeaconCommitteeSelectionProofsResponse, this::handleEmptyResponse))
         .exceptionally(unexpectedErrorHandler())
         .finishStackTrace();
   }
@@ -127,11 +137,11 @@ public class DvtAttestationAggregations {
             && request.getSlot().equals(proof.getSlot());
   }
 
-  private void handleEmptyResponse(final UInt64 slot) {
+  private void handleEmptyResponse() {
     LOG.warn(
-        "Received empty response from DVT middleware for slot {}. This will impact aggregation duties.",
-        slot);
-    completeAllPendingFuturesExceptionally("Empty response from DVT middleware for slot " + slot);
+        "Received empty response from DVT middleware for epoch {}. This will impact aggregation duties.",
+        epoch);
+    completeAllPendingFuturesExceptionally("Empty response from DVT middleware for epoch " + epoch);
   }
 
   private Function<Throwable, Void> unexpectedErrorHandler() {

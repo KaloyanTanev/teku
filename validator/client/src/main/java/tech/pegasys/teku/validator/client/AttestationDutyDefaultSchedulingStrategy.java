@@ -61,13 +61,17 @@ public class AttestationDutyDefaultSchedulingStrategy
   @Override
   public void onSlot(final UInt64 slot) {
     currentSlot.set(slot);
-    if (isFirstSlotOfEpoch(slot)) {
-      final UInt64 epoch = spec.computeEpochAtSlot(slot);
-      final DvtAttestationAggregations dvt = pendingDvtByEpoch.remove(epoch);
-      if (dvt != null) {
-        dvt.activate(slot);
-      }
-    }
+    final UInt64 currentEpoch = spec.computeEpochAtSlot(slot);
+    pendingDvtByEpoch
+        .entrySet()
+        .removeIf(
+            entry -> {
+              if (entry.getKey().isLessThanOrEqualTo(currentEpoch)) {
+                entry.getValue().activate(spec.computeStartSlotAtEpoch(entry.getKey()));
+                return true;
+              }
+              return false;
+            });
   }
 
   @Override
@@ -79,13 +83,16 @@ public class AttestationDutyDefaultSchedulingStrategy
     final Optional<DvtAttestationAggregations> dvtAttestationAggregations;
     if (useDvtEndpoint) {
       final DvtAttestationAggregations dvt =
-          new DvtAttestationAggregations(validatorApiChannel, duties.getDuties().size());
+          new DvtAttestationAggregations(validatorApiChannel, epoch, duties.getDuties().size());
       final boolean isCurrentEpoch =
           epoch.isLessThanOrEqualTo(spec.computeEpochAtSlot(currentSlot.get()));
       if (isCurrentEpoch) {
         dvt.activate(spec.computeStartSlotAtEpoch(epoch));
       } else {
-        pendingDvtByEpoch.put(epoch, dvt);
+        final DvtAttestationAggregations previous = pendingDvtByEpoch.put(epoch, dvt);
+        if (previous != null) {
+          previous.cancel();
+        }
       }
       dvtAttestationAggregations = Optional.of(dvt);
     } else {
@@ -95,12 +102,6 @@ public class AttestationDutyDefaultSchedulingStrategy
     return scheduleDuties(scheduledDuties, duties.getDuties(), dvtAttestationAggregations)
         .<SlotBasedScheduledDuties<?, ?>>thenApply(__ -> scheduledDuties)
         .alwaysRun(beaconCommitteeSubscriptions::sendRequests);
-  }
-
-  // Copied from SyncCommitteeScheduler
-  private boolean isFirstSlotOfEpoch(final UInt64 slot) {
-    final UInt64 currentEpoch = spec.computeEpochAtSlot(slot);
-    return spec.computeStartSlotAtEpoch(currentEpoch).equals(slot);
   }
 
   @Override
