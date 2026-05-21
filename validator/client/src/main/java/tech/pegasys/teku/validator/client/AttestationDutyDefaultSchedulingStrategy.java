@@ -13,14 +13,22 @@
 
 package tech.pegasys.teku.validator.client;
 
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.tuweni.bytes.Bytes32;
+import tech.pegasys.teku.api.response.ValidatorStatus;
+import tech.pegasys.teku.bls.BLSPublicKey;
 import tech.pegasys.teku.ethereum.json.types.validator.AttesterDuties;
 import tech.pegasys.teku.infrastructure.async.SafeFuture;
 import tech.pegasys.teku.infrastructure.unsigned.UInt64;
 import tech.pegasys.teku.spec.Spec;
+import tech.pegasys.teku.spec.datastructures.operations.AttesterSlashing;
+import tech.pegasys.teku.spec.datastructures.operations.ProposerSlashing;
 import tech.pegasys.teku.validator.api.ValidatorApiChannel;
+import tech.pegasys.teku.validator.api.ValidatorTimingChannel;
 import tech.pegasys.teku.validator.client.duties.BeaconCommitteeSubscriptions;
 import tech.pegasys.teku.validator.client.duties.SlotBasedScheduledDuties;
 import tech.pegasys.teku.validator.client.duties.attestations.AggregationDuty;
@@ -28,10 +36,13 @@ import tech.pegasys.teku.validator.client.duties.attestations.AttestationProduct
 import tech.pegasys.teku.validator.client.loader.OwnedValidators;
 
 public class AttestationDutyDefaultSchedulingStrategy
-    extends AbstractAttestationDutySchedulingStrategy {
+    extends AbstractAttestationDutySchedulingStrategy implements ValidatorTimingChannel {
 
   private final ValidatorApiChannel validatorApiChannel;
   private final boolean useDvtEndpoint;
+  private final AtomicReference<UInt64> currentSlot = new AtomicReference<>(UInt64.ZERO);
+  private final ConcurrentHashMap<UInt64, DvtAttestationAggregations> pendingDvtByEpoch =
+      new ConcurrentHashMap<>();
 
   public AttestationDutyDefaultSchedulingStrategy(
       final Spec spec,
@@ -48,19 +59,88 @@ public class AttestationDutyDefaultSchedulingStrategy
   }
 
   @Override
+  public void onSlot(final UInt64 slot) {
+    currentSlot.set(slot);
+    final UInt64 currentEpoch = spec.computeEpochAtSlot(slot);
+    pendingDvtByEpoch.forEach(
+        (epoch, dvt) -> {
+          if (epoch.isLessThanOrEqualTo(currentEpoch)) {
+            dvt.activate();
+          }
+        });
+    pendingDvtByEpoch.entrySet().removeIf(entry -> entry.getKey().isLessThan(currentEpoch));
+  }
+
+  @Override
   public SafeFuture<SlotBasedScheduledDuties<?, ?>> scheduleAllDuties(
       final UInt64 epoch, final AttesterDuties duties) {
     final SlotBasedScheduledDuties<AttestationProductionDuty, AggregationDuty> scheduledDuties =
         getScheduledDuties(duties);
 
-    final Optional<DvtAttestationAggregations> dvtAttestationAggregations =
-        useDvtEndpoint
-            ? Optional.of(
-                new DvtAttestationAggregations(validatorApiChannel, duties.getDuties().size()))
-            : Optional.empty();
+    final Optional<DvtAttestationAggregations> dvtAttestationAggregations;
+    if (useDvtEndpoint && !duties.getDuties().isEmpty()) {
+      final DvtAttestationAggregations dvt =
+          new DvtAttestationAggregations(validatorApiChannel, epoch, duties.getDuties().size());
+      final DvtAttestationAggregations previous = pendingDvtByEpoch.put(epoch, dvt);
+      if (previous != null) {
+        previous.cancel();
+      }
+      if (epoch.isLessThanOrEqualTo(spec.computeEpochAtSlot(currentSlot.get()))) {
+        dvt.activate();
+      }
+      dvtAttestationAggregations = Optional.of(dvt);
+    } else {
+      final DvtAttestationAggregations previous = pendingDvtByEpoch.remove(epoch);
+      if (previous != null) {
+        previous.cancel();
+      }
+      dvtAttestationAggregations = Optional.empty();
+    }
 
     return scheduleDuties(scheduledDuties, duties.getDuties(), dvtAttestationAggregations)
         .<SlotBasedScheduledDuties<?, ?>>thenApply(__ -> scheduledDuties)
         .alwaysRun(beaconCommitteeSubscriptions::sendRequests);
   }
+
+  @Override
+  public void onHeadUpdate(
+      final UInt64 slot,
+      final Bytes32 previousDutyDependentRoot,
+      final Bytes32 currentDutyDependentRoot,
+      final Bytes32 headBlockRoot) {}
+
+  @Override
+  public void onPossibleMissedEvents() {}
+
+  @Override
+  public void onValidatorsAdded() {}
+
+  @Override
+  public void onBlockProductionDue(final UInt64 slot) {}
+
+  @Override
+  public void onAttestationCreationDue(final UInt64 slot) {}
+
+  @Override
+  public void onAttestationAggregationDue(final UInt64 slot) {}
+
+  @Override
+  public void onSyncCommitteeCreationDue(final UInt64 slot) {}
+
+  @Override
+  public void onContributionCreationDue(final UInt64 slot) {}
+
+  @Override
+  public void onPayloadAttestationCreationDue(final UInt64 slot) {}
+
+  @Override
+  public void onAttesterSlashing(final AttesterSlashing attesterSlashing) {}
+
+  @Override
+  public void onProposerSlashing(final ProposerSlashing proposerSlashing) {}
+
+  @Override
+  public void onUpdatedValidatorStatuses(
+      final Map<BLSPublicKey, ValidatorStatus> newValidatorStatuses,
+      final boolean possibleMissingEvents) {}
 }

@@ -517,6 +517,7 @@ public class ValidatorClientService extends Service {
             beaconCommitteeSubscriptions,
             asyncRunner);
     validatorTimingChannels.add(attestationDutyBatchSchedulingStrategy);
+    validatorTimingChannels.add(attestationDutyDefaultSchedulingStrategy);
     final DutyLoader<?> attestationDutyLoader =
         new RetryingDutyLoader<>(
             asyncRunner,
